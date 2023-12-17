@@ -1,0 +1,166 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Define the start-of-frame (SOF) and end-of-frame (EOFFrame) values
+enum FrameMarkers {
+    SOF = 0x24,
+    EOFFrame = 0xFF,
+};
+
+// Define the message type
+enum MessageType {
+    INTEGER,
+    STRING,
+    // Add more types as needed
+};
+
+// Define the encoded message structure
+struct EncodedMessage {
+    unsigned char sof;
+    unsigned char opcode;
+    unsigned char type;
+    unsigned char length;
+    union {
+        int intData;
+        char strData[256];  // Fixed-size array for simplicity
+    } data;
+    unsigned char checksum;
+    unsigned char eof;
+};
+
+// Function to calculate checksum
+unsigned char calculateChecksum(struct EncodedMessage* msg) {
+    unsigned char checksum = 0;
+    checksum ^= msg->opcode;
+    checksum ^= msg->type;
+    checksum ^= msg->length;
+
+    for (int i = 0; i < msg->length; i++) {
+        checksum ^= ((unsigned char*)&msg->data)[i];
+    }
+
+    return checksum;
+}
+
+// Function to encode message
+struct EncodedMessage encodeMessage(unsigned char opcode, enum MessageType type, const void* data, size_t length) {
+    struct EncodedMessage encodedMsg;
+    encodedMsg.sof = SOF;
+    encodedMsg.opcode = opcode;
+    encodedMsg.type = (unsigned char)type;
+    encodedMsg.length = length;
+    memcpy(&encodedMsg.data, data, length);
+    encodedMsg.checksum = calculateChecksum(&encodedMsg);
+    encodedMsg.eof = EOFFrame;
+    return encodedMsg;
+}
+
+// Function to print encoded message
+void printEncodedMessage(struct EncodedMessage* encodedMsg) {
+    printf("Encoded Message:\n");
+    printf("sof: 0x%02X\n", encodedMsg->sof);
+    printf("opcode: 0x%02X\n", encodedMsg->opcode);
+    printf("type: 0x%02X\n", encodedMsg->type);
+    printf("length: 0x%02X\n", encodedMsg->length);
+    printf("data: ");
+    if (encodedMsg->type == INTEGER) {
+        printf("%d", encodedMsg->data.intData);
+    } else if (encodedMsg->type == STRING) {
+        printf("%s", encodedMsg->data.strData);
+    }
+    printf("\n");
+    printf("checksum: 0x%02X\n", encodedMsg->checksum);
+    printf("eof: 0x%02X\n", encodedMsg->eof);
+}
+
+// Function to simulate receiving the message byte by byte
+void simulateReceivingMessageByteByByte(const unsigned char* encodedMsgBuffer, size_t bufferSize) {
+    size_t currentPosition = 0;
+    struct EncodedMessage receivedMsg;
+
+    while (currentPosition < bufferSize) {
+        unsigned char currentByte = encodedMsgBuffer[currentPosition];
+
+        if (currentByte == SOF) {
+            // Initialize receivedMsg structure
+            memset(&receivedMsg, 0, sizeof(struct EncodedMessage));
+            receivedMsg.sof = SOF;
+            currentPosition++;
+
+            // Read other fields of the message
+            // Ensure that you have enough bytes in the buffer
+
+            // Example: Reading opcode
+            receivedMsg.opcode = encodedMsgBuffer[currentPosition++];
+            
+            // Example: Reading type
+            receivedMsg.type = encodedMsgBuffer[currentPosition++];
+
+            // Example: Reading length
+            receivedMsg.length = encodedMsgBuffer[currentPosition++];
+
+            // Example: Reading data
+            memcpy(&receivedMsg.data, &encodedMsgBuffer[currentPosition], receivedMsg.length);
+            currentPosition += receivedMsg.length;
+
+            // Example: Reading checksum
+            receivedMsg.checksum = encodedMsgBuffer[currentPosition++];
+
+            // Example: Reading eof
+            receivedMsg.eof = encodedMsgBuffer[currentPosition++];
+
+            // Validate the message
+            unsigned char checksum = calculateChecksum(&receivedMsg);
+            if (checksum == receivedMsg.checksum && receivedMsg.eof == EOFFrame) {
+                printf("Received a valid message:\n");
+                printf("opcode: 0x%02X\n", receivedMsg.opcode);
+                printf("type: 0x%02X\n", receivedMsg.type);
+                printf("length: 0x%02X\n", receivedMsg.length);
+                printf("data: ");
+                if (receivedMsg.type == INTEGER) {
+                    printf("%d", receivedMsg.data.intData);
+                } else if (receivedMsg.type == STRING) {
+                    printf("%s", receivedMsg.data.strData);
+                }
+                printf("\n");
+                printf("checksum: 0x%02X\n", checksum);
+                printf("eof: 0x%02X\n", receivedMsg.eof);
+            } else {
+                printf("Received an invalid message. Discarding.\n");
+            }
+        }
+
+        currentPosition++;
+    }
+}
+
+int main() {
+    // Hard-coded data for an integer message
+    int intData = 42;
+    struct EncodedMessage encodedIntMsg = encodeMessage(0x00, INTEGER, &intData, sizeof(int));
+
+    // Print encoded message
+    printEncodedMessage(&encodedIntMsg);
+
+    // Simulate receiving the integer message byte by byte into a buffer
+    unsigned char receivedBufferInt[256];  // Adjust the buffer size as needed
+    memcpy(receivedBufferInt, &encodedIntMsg, sizeof(struct EncodedMessage));
+    printf("\nSimulating receiving the integer message byte by byte...\n");
+    simulateReceivingMessageByteByByte(receivedBufferInt, sizeof(struct EncodedMessage));
+
+    // Hard-coded data for a string message
+    const char* strData = "Satyam,here!";
+    struct EncodedMessage encodedStrMsg = encodeMessage(0x01, STRING, strData, strlen(strData) + 1);
+
+    // Print encoded message
+    printEncodedMessage(&encodedStrMsg);
+
+    // Simulate receiving the string message byte by byte into a buffer
+    unsigned char receivedBufferStr[256];  // Adjust the buffer size as needed
+    memcpy(receivedBufferStr, &encodedStrMsg, sizeof(struct EncodedMessage));
+    printf("\nSimulating receiving the string message byte by byte...\n");
+    simulateReceivingMessageByteByByte(receivedBufferStr, sizeof(struct EncodedMessage));
+
+    return 0;
+}
